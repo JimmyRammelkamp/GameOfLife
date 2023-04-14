@@ -39,6 +39,22 @@ void initialiseGrid()
     }
 }
 
+void initialiseGlider()
+{
+    //#pragma omp parallel for //breaks randomisation
+    for (int x = 0; x < gridSizeX; x++)
+    {
+        for (int y = 0; y < gridSizeY; y++)
+        {
+            presentCells[x][y] = false;
+        }
+    }
+    presentCells[2][0] = true;
+    presentCells[3][1] = true;
+    presentCells[1][2] = true; presentCells[2][2] = true; presentCells[3][2] = true;
+
+}
+
 void cellInfo()
 {
     livingCellCount = 0;
@@ -95,6 +111,11 @@ void displayCells()
     
 }
 
+
+int getCell(int i, int j) {
+    return presentCells[(i + gridSizeX) % gridSizeX][(j + gridSizeY) % gridSizeY];
+}
+
 void processCells()
 {
 #pragma omp parallel for //schedule(dynamic,10)//num_threads(20) //collapse(2) //schedule(guided,10) //num_threads(4)
@@ -105,36 +126,18 @@ void processCells()
             bool alive;
             int neighbourCount = 0;
 
-            neighbourCount = presentCells[x - 1][y - 1] + presentCells[x][y - 1] + presentCells[x + 1][y - 1] + presentCells[x - 1][y] + presentCells[x + 1][y] + presentCells[x - 1][y + 1] + presentCells[x][y + 1] + presentCells[x + 1][y + 1];
+            neighbourCount =    getCell(x - 1,y - 1) + getCell(x,y - 1) + getCell(x + 1,y - 1) + 
+                                getCell(x - 1,y) +                        getCell(x + 1,y) + 
+                                getCell(x - 1,y + 1) + getCell(x,y + 1) + getCell(x + 1,y + 1);
 
             if (presentCells[x][y] == true)
             {
-                /*if (presentCells[x - 1][y - 1] == true) neighbourCount++;
-                if (presentCells[x][y - 1] == true) neighbourCount++;
-                if (presentCells[x + 1][y - 1] == true) neighbourCount++;
-                if (presentCells[x - 1][y] == true) neighbourCount++;
-                if (presentCells[x + 1][y] == true) neighbourCount++;
-                if (presentCells[x - 1][y + 1] == true) neighbourCount++;
-                if (presentCells[x][y + 1] == true) neighbourCount++;
-                if (presentCells[x + 1][y + 1] == true) neighbourCount++;*/
-
-
                 if (neighbourCount <= 1 || neighbourCount >= 4) alive = false;
                 else alive = true;
                 futureCells[x][y] = alive;
-
             }
             else
             {
-                /*if (presentCells[x - 1][y - 1] == true) neighbourCount++;
-                if (presentCells[x][y - 1] == true) neighbourCount++;
-                if (presentCells[x + 1][y - 1] == true) neighbourCount++;
-                if (presentCells[x - 1][y] == true) neighbourCount++;
-                if (presentCells[x + 1][y] == true) neighbourCount++;
-                if (presentCells[x - 1][y + 1] == true) neighbourCount++;
-                if (presentCells[x][y + 1] == true) neighbourCount++;
-                if (presentCells[x + 1][y + 1] == true) neighbourCount++;*/
-
                 if (neighbourCount == 3) futureCells[x][y] = true;
             }
 
@@ -165,7 +168,7 @@ int main()
 {
     //Initialisation
     startTime = clock();
-    initialiseGrid();
+    initialiseGlider();
     endTime = clock();
     processTime = (((float)endTime - (float)startTime) / 1000);
     std::cout << "Grid Initialisation process time: " << processTime << " (in s)" << std::endl;
