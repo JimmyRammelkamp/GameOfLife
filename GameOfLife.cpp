@@ -15,9 +15,7 @@ const int gridSizeX = 50;
 const int gridSizeY = 50;
 
 int steps = 100000;
-
-int livingCellCount;
-int deadCellCount;
+int stepCount = 0;
 
 int presentCells[gridSizeX][gridSizeY];
 int futureCells[gridSizeX][gridSizeY];
@@ -52,8 +50,17 @@ void initialiseTest()
             presentCells[x][y] = false;
         }
     }
-    presentCells[2][0] = 1;
-    presentCells[3][1] = -1;
+
+    for (int x = 0; x < gridSizeX/3; x += 3)
+    {
+        for (int y = 0; y < gridSizeY/3; y += 3)
+        {
+            presentCells[x][y] = -1;
+        }
+    }
+
+    //presentCells[2][0] = 1;
+    //presentCells[3][1] = -1;
     //presentCells[1][2] = true; presentCells[2][2] = true; presentCells[3][2] = true;
 
 }
@@ -73,21 +80,11 @@ void cellInfo()
     }
     emptyCount = (gridSizeX * gridSizeY) - fishCount - sharkCount;
 
-    std::cout << "Fish: " << fishCount << " Sharks: " << sharkCount << " Empty: " << emptyCount << "\n";
+    std::cout << "Fish: " << fishCount << " Sharks: " << sharkCount << " Empty: " << emptyCount << " Iterations: " << stepCount << "\n";
     
 }
 
-void overwritePresentCells()
-{
-//#pragma omp parallel for //schedule(dynamic,10)//num_threads(20) // //schedule(guided,10) //num_threads(4)
-    for (int x = 0; x < gridSizeX; x++)
-    {
-        for (int y = 0; y < gridSizeY; y++)
-        {
-            presentCells[x][y] = futureCells[x][y];
-        }
-    }
-}
+
 
 void displayCells()
 {
@@ -152,43 +149,28 @@ void processCells()
             int neighbourSharkBreedableCount = 0;
             int neighbourEmptyCount = 0;
 
-            for (int i = 0; i < 8; i++)
+            for (int i = 0; i < 8; i++) 
             {
-                if (neighbours[i] > 0) neighbourFishCount++;
-                if (neighbours[i] >= 2) neighbourFishBreedableCount++;
-                if (neighbours[i] < 0) neighbourSharkCount++;
-                if (neighbours[i] <= 3) neighbourSharkBreedableCount++;
-                if (neighbours[i] <= 3) neighbourSharkBreedableCount++;
-                if (neighbours[i] == 0) neighbourEmptyCount++;
-
+                if (neighbours[i] >= 2) { neighbourFishBreedableCount++; neighbourFishCount++; }
+                else if (neighbours[i] > 0) neighbourFishCount++;
+                else if (neighbours[i] <= -3) { neighbourSharkBreedableCount++; neighbourSharkCount++; }
+                else if (neighbours[i] < 0) neighbourSharkCount++;
+                else neighbourEmptyCount++;
             }
-
-            
-
-           /* neighbourFishCount =    (getCell(x - 1,y - 1) > 0) + (getCell(x,y - 1) > 0) + (getCell(x + 1,y - 1) > 0) +
-                                    (getCell(x - 1,y) > 0) +                              (getCell(x + 1,y) > 0) +
-                                    (getCell(x - 1,y + 1) > 0) + (getCell(x,y + 1) > 0) + (getCell(x + 1,y + 1) > 0);
-            
-            neighbourSharkCount =   (getCell(x - 1,y - 1) < 0) + (getCell(x,y - 1) < 0) + (getCell(x + 1,y - 1) < 0) +
-                                    (getCell(x - 1,y) < 0) +                              (getCell(x + 1,y) < 0) +
-                                    (getCell(x - 1,y + 1) < 0) + (getCell(x,y + 1) < 0) + (getCell(x + 1,y + 1) < 0);*/
-
-            neighbourEmptyCount = 8 - neighbourFishCount - neighbourSharkCount;
 
             if (presentCells[x][y] > 0) //Fish Rules
             {
-                if (neighbourSharkCount >= 5) futureCells[x][y] = 0;
-                else if (neighbourFishCount == 8) futureCells[x][y] = 0;
-                else if (presentCells[x][y] > 10) futureCells[x][y] = 0;
-                else futureCells[x][y] = presentCells[x][y] + 1;
+                if (neighbourSharkCount >= 5) futureCells[x][y] = 0;  // Eaten Death
+                else if (neighbourFishCount == 8) futureCells[x][y] = 0; // Overcrowding Death
+                else if (presentCells[x][y] > 10) futureCells[x][y] = 0; // Lifespan Death
+                else futureCells[x][y] = presentCells[x][y] + 1; // Ageing
             }
             else if(presentCells[x][y] < 0) //Shark Rules
             {
-                int randNum = rand() % 32;
-                if (neighbourSharkCount >= 6 && neighbourFishCount == 0) futureCells[x][y] = 0;
-                else if (randNum == 0) futureCells[x][y] = 0;
-                else if (presentCells[x][y] < -20) futureCells[x][y] = 0;
-                else futureCells[x][y] = presentCells[x][y] - 1;
+                if (neighbourSharkCount >= 6 && neighbourFishCount == 0) futureCells[x][y] = 0; // Overcrowding/Underfead Death
+                else if (int(rand() % 32) == 0) futureCells[x][y] = 0; // 1/32 chance of death
+                else if (presentCells[x][y] < -20) futureCells[x][y] = 0; // Lifespan Death
+                else futureCells[x][y] = presentCells[x][y] - 1; // Ageing
             }
             else
             {
@@ -196,6 +178,19 @@ void processCells()
                 else if (neighbourSharkCount >= 4 && neighbourSharkBreedableCount >= 3 && neighbourFishCount < 4) futureCells[x][y] = -1;
             }
 
+        }
+    }
+    stepCount++;
+}
+
+void overwritePresentCells()
+{
+    //#pragma omp parallel for //schedule(dynamic,10)//num_threads(20) // //schedule(guided,10) //num_threads(4)
+    for (int x = 0; x < gridSizeX; x++)
+    {
+        for (int y = 0; y < gridSizeY; y++)
+        {
+            presentCells[x][y] = futureCells[x][y];
         }
     }
 }
@@ -211,9 +206,8 @@ void updateInfo()
     system("cls"); //Significantly hurt performance accidently leaving it on when not displaying cells
     displayCells();
     cellInfo();
+
     system("pause");
-
-
     //Sleep(200);
 }
 
@@ -221,22 +215,23 @@ void updateInfo()
 
 int main()
 {
+    system("pause");
     //Initialisation
     startTime = clock();
     initialiseGrid();
+    //initialiseTest();
     endTime = clock();
     processTime = (((float)endTime - (float)startTime) / 1000);
     std::cout << "Grid Initialisation process time: " << processTime << " (in s)" << std::endl;
-    //generateghostbordercells
-    //displayCells();
+    displayCells();
     cellInfo();
     system("pause");
     
     
     //Processing
     startTime = clock();
-    for (int i = 0; i < steps; i++) {
-        update();
+    for (int i = 0; i < steps; i+=100) {
+        for(int i = 0; i < 100; i++)update();
         updateInfo();
     }
     endTime = clock();
