@@ -11,19 +11,22 @@ float processTime;
 
 HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
 
-const int gridSizeX = 20;
-const int gridSizeY = 20;
+const int gridSizeX = 50;
+const int gridSizeY = 50;
 
 int steps = 100000;
 
 int livingCellCount;
 int deadCellCount;
 
-bool presentCells[gridSizeX][gridSizeY];
-bool futureCells[gridSizeX][gridSizeY];
+int presentCells[gridSizeX][gridSizeY];
+int futureCells[gridSizeX][gridSizeY];
 
-bool randomBool() {
-    return rand() > (RAND_MAX / 2);
+int randomSpawner() 
+{
+    int randNum = (rand() % 4) - 1;
+    if (randNum > 0) randNum = 1;
+    return randNum;
 }
 
 void initialiseGrid()
@@ -34,12 +37,12 @@ void initialiseGrid()
     {
         for (int y = 0; y < gridSizeY; y++)
         {
-            presentCells[x][y] = randomBool();
+            presentCells[x][y] = randomSpawner();
         }
     }
 }
 
-void initialiseGlider()
+void initialiseTest()
 {
     //#pragma omp parallel for //breaks randomisation
     for (int x = 0; x < gridSizeX; x++)
@@ -49,32 +52,34 @@ void initialiseGlider()
             presentCells[x][y] = false;
         }
     }
-    presentCells[2][0] = true;
-    presentCells[3][1] = true;
-    presentCells[1][2] = true; presentCells[2][2] = true; presentCells[3][2] = true;
+    presentCells[2][0] = 1;
+    presentCells[3][1] = -1;
+    //presentCells[1][2] = true; presentCells[2][2] = true; presentCells[3][2] = true;
 
 }
 
 void cellInfo()
 {
-    livingCellCount = 0;
-    deadCellCount = 0;
+    int fishCount = 0;
+    int sharkCount = 0;
+    int emptyCount = 0;
     for (int x = 0; x < gridSizeX; x++)
     {
         for (int y = 0; y < gridSizeY; y++)
         {
-            livingCellCount += presentCells[x][y];
+            if (presentCells[x][y] > 0) fishCount++;
+            else if (presentCells[x][y] < 0) sharkCount++;
         }
     }
-    deadCellCount = (gridSizeX * gridSizeY) - livingCellCount;
+    emptyCount = (gridSizeX * gridSizeY) - fishCount - sharkCount;
 
-    std::cout << "Living Cells: " << livingCellCount << " Dead Cells: " << deadCellCount << " Total Cells: " << livingCellCount + deadCellCount << "\n";
+    std::cout << "Fish: " << fishCount << " Sharks: " << sharkCount << " Empty: " << emptyCount << "\n";
     
 }
 
 void overwritePresentCells()
 {
-#pragma omp parallel for //schedule(dynamic,10)//num_threads(20) // //schedule(guided,10) //num_threads(4)
+//#pragma omp parallel for //schedule(dynamic,10)//num_threads(20) // //schedule(guided,10) //num_threads(4)
     for (int x = 0; x < gridSizeX; x++)
     {
         for (int y = 0; y < gridSizeY; y++)
@@ -90,17 +95,22 @@ void displayCells()
     {
         for (int x = 0; x < gridSizeX; x++)
         {
-            if (presentCells[x][y] == true)
+            if (presentCells[x][y] > 0) //fish
             {
-                //system("Color 0A");
-                SetConsoleTextAttribute(h, 10);
-                std::cout << "X ";
+                SetConsoleTextAttribute(h, 11);
+                if (presentCells[x][y] > 9) std::cout << presentCells[x][y] << " ";
+                else std::cout << presentCells[x][y] << "  ";
             }
-            else
+            else if (presentCells[x][y] < 0) //shark
             {
-                //system("Color 0C");
                 SetConsoleTextAttribute(h, 12);
-                std::cout << ". ";
+                if (presentCells[x][y] < -9) std::cout << presentCells[x][y]*-1 << " ";
+                else std::cout << presentCells[x][y]*-1 << "  ";
+            }
+            else //empty
+            {
+                SetConsoleTextAttribute(h, 1);
+                std::cout << ".  ";
             }
         }
         std::cout << "\n";
@@ -113,32 +123,77 @@ void displayCells()
 
 
 int getCell(int i, int j) {
+    /*int num = presentCells[(i + gridSizeX) % gridSizeX][(j + gridSizeY) % gridSizeY];
+    return (num > 0) - (num < 0);*/
+
     return presentCells[(i + gridSizeX) % gridSizeX][(j + gridSizeY) % gridSizeY];
 }
 
 void processCells()
 {
-#pragma omp parallel for //schedule(dynamic,10)//num_threads(20) //collapse(2) //schedule(guided,10) //num_threads(4)
+//#pragma omp parallel for //schedule(dynamic,10)//num_threads(20) //collapse(2) //schedule(guided,10) //num_threads(4)
     for (int x = 0; x < gridSizeX; x++)
     {
         for (int y = 0; y < gridSizeY; y++)
         {
-            bool alive;
-            int neighbourCount = 0;
+            int neighbours[8];
+            neighbours[0] = getCell(x - 1, y - 1);
+            neighbours[1] = getCell(x, y - 1);
+            neighbours[2] = getCell(x + 1, y - 1);
+            neighbours[3] = getCell(x - 1, y);
+            neighbours[4] = getCell(x + 1, y);
+            neighbours[5] = getCell(x - 1, y + 1);
+            neighbours[6] = getCell(x, y + 1);
+            neighbours[7] = getCell(x + 1, y + 1);
 
-            neighbourCount =    getCell(x - 1,y - 1) + getCell(x,y - 1) + getCell(x + 1,y - 1) + 
-                                getCell(x - 1,y) +                        getCell(x + 1,y) + 
-                                getCell(x - 1,y + 1) + getCell(x,y + 1) + getCell(x + 1,y + 1);
+            int neighbourFishCount = 0;
+            int neighbourFishBreedableCount = 0;
+            int neighbourSharkCount = 0;
+            int neighbourSharkBreedableCount = 0;
+            int neighbourEmptyCount = 0;
 
-            if (presentCells[x][y] == true)
+            for (int i = 0; i < 8; i++)
             {
-                if (neighbourCount <= 1 || neighbourCount >= 4) alive = false;
-                else alive = true;
-                futureCells[x][y] = alive;
+                if (neighbours[i] > 0) neighbourFishCount++;
+                if (neighbours[i] >= 2) neighbourFishBreedableCount++;
+                if (neighbours[i] < 0) neighbourSharkCount++;
+                if (neighbours[i] <= 3) neighbourSharkBreedableCount++;
+                if (neighbours[i] <= 3) neighbourSharkBreedableCount++;
+                if (neighbours[i] == 0) neighbourEmptyCount++;
+
+            }
+
+            
+
+           /* neighbourFishCount =    (getCell(x - 1,y - 1) > 0) + (getCell(x,y - 1) > 0) + (getCell(x + 1,y - 1) > 0) +
+                                    (getCell(x - 1,y) > 0) +                              (getCell(x + 1,y) > 0) +
+                                    (getCell(x - 1,y + 1) > 0) + (getCell(x,y + 1) > 0) + (getCell(x + 1,y + 1) > 0);
+            
+            neighbourSharkCount =   (getCell(x - 1,y - 1) < 0) + (getCell(x,y - 1) < 0) + (getCell(x + 1,y - 1) < 0) +
+                                    (getCell(x - 1,y) < 0) +                              (getCell(x + 1,y) < 0) +
+                                    (getCell(x - 1,y + 1) < 0) + (getCell(x,y + 1) < 0) + (getCell(x + 1,y + 1) < 0);*/
+
+            neighbourEmptyCount = 8 - neighbourFishCount - neighbourSharkCount;
+
+            if (presentCells[x][y] > 0) //Fish Rules
+            {
+                if (neighbourSharkCount >= 5) futureCells[x][y] = 0;
+                else if (neighbourFishCount == 8) futureCells[x][y] = 0;
+                else if (presentCells[x][y] > 10) futureCells[x][y] = 0;
+                else futureCells[x][y] = presentCells[x][y] + 1;
+            }
+            else if(presentCells[x][y] < 0) //Shark Rules
+            {
+                int randNum = rand() % 32;
+                if (neighbourSharkCount >= 6 && neighbourFishCount == 0) futureCells[x][y] = 0;
+                else if (randNum == 0) futureCells[x][y] = 0;
+                else if (presentCells[x][y] < -20) futureCells[x][y] = 0;
+                else futureCells[x][y] = presentCells[x][y] - 1;
             }
             else
             {
-                if (neighbourCount == 3) futureCells[x][y] = true;
+                if (neighbourFishCount >= 4 && neighbourFishBreedableCount >= 3 && neighbourSharkCount < 4) futureCells[x][y] = 1;
+                else if (neighbourSharkCount >= 4 && neighbourSharkBreedableCount >= 3 && neighbourFishCount < 4) futureCells[x][y] = -1;
             }
 
         }
@@ -168,7 +223,7 @@ int main()
 {
     //Initialisation
     startTime = clock();
-    initialiseGlider();
+    initialiseGrid();
     endTime = clock();
     processTime = (((float)endTime - (float)startTime) / 1000);
     std::cout << "Grid Initialisation process time: " << processTime << " (in s)" << std::endl;
