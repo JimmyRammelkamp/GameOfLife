@@ -5,14 +5,20 @@
 #include <windows.h>  
 #include <time.h>
 #include <omp.h>
+//#include <random>
+//
+//std::random_device rd;
+//std::mt19937 gen(rd());
+//std::uniform_int_distribution<> dis(0, 31);
 
 clock_t startTime, endTime;
 float processTime;
 
 HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
 
-const int gridSizeX = 50;
-const int gridSizeY = 50;
+const int gridSizeX = 40;
+const int gridSizeY = 40;
+const int threads = 16;
 
 int steps = 100000;
 int stepCount = 0;
@@ -30,7 +36,6 @@ int randomSpawner()
 void initialiseGrid()
 {
     srand(time(NULL));
-//#pragma omp parallel for //breaks randomisation
     for (int x = 0; x < gridSizeX; x++)
     {
         for (int y = 0; y < gridSizeY; y++)
@@ -42,7 +47,6 @@ void initialiseGrid()
 
 void initialiseTest()
 {
-    //#pragma omp parallel for //breaks randomisation
     for (int x = 0; x < gridSizeX; x++)
     {
         for (int y = 0; y < gridSizeY; y++)
@@ -51,6 +55,7 @@ void initialiseTest()
         }
     }
 
+    //Spaced sharks for testing random death
     for (int x = 0; x < gridSizeX/3; x += 3)
     {
         for (int y = 0; y < gridSizeY/3; y += 3)
@@ -59,8 +64,9 @@ void initialiseTest()
         }
     }
 
-    //presentCells[2][0] = 1;
-    //presentCells[3][1] = -1;
+    //Glider for game of life
+    //presentCells[2][0] = true;
+    //presentCells[3][1] = true;
     //presentCells[1][2] = true; presentCells[2][2] = true; presentCells[3][2] = true;
 
 }
@@ -119,16 +125,14 @@ void displayCells()
 }
 
 
-int getCell(int i, int j) {
-    /*int num = presentCells[(i + gridSizeX) % gridSizeX][(j + gridSizeY) % gridSizeY];
-    return (num > 0) - (num < 0);*/
-
+int getCell(int i, int j) 
+{    
     return presentCells[(i + gridSizeX) % gridSizeX][(j + gridSizeY) % gridSizeY];
 }
 
 void processCells()
 {
-//#pragma omp parallel for //schedule(dynamic,10)//num_threads(20) //collapse(2) //schedule(guided,10) //num_threads(4)
+#pragma omp parallel for //schedule(static,1) //num_threads(threads) //schedule(dynamic,10)  //collapse(2) //schedule(guided,10) //num_threads(4)
     for (int x = 0; x < gridSizeX; x++)
     {
         for (int y = 0; y < gridSizeY; y++)
@@ -168,14 +172,14 @@ void processCells()
             else if(presentCells[x][y] < 0) //Shark Rules
             {
                 if (neighbourSharkCount >= 6 && neighbourFishCount == 0) futureCells[x][y] = 0; // Overcrowding/Underfead Death
-                else if (int(rand() % 32) == 0) futureCells[x][y] = 0; // 1/32 chance of death
+                else if (/*dis(gen)*/int(rand()%32) == 0) futureCells[x][y] = 0; // 1/32 chance of death
                 else if (presentCells[x][y] < -20) futureCells[x][y] = 0; // Lifespan Death
                 else futureCells[x][y] = presentCells[x][y] - 1; // Ageing
             }
-            else
+            else //Breeding Rules
             {
-                if (neighbourFishCount >= 4 && neighbourFishBreedableCount >= 3 && neighbourSharkCount < 4) futureCells[x][y] = 1;
-                else if (neighbourSharkCount >= 4 && neighbourSharkBreedableCount >= 3 && neighbourFishCount < 4) futureCells[x][y] = -1;
+                if (neighbourFishCount >= 4 && neighbourFishBreedableCount >= 3 && neighbourSharkCount < 4) futureCells[x][y] = 1; // Spawn Fish
+                else if (neighbourSharkCount >= 4 && neighbourSharkBreedableCount >= 3 && neighbourFishCount < 4) futureCells[x][y] = -1; // Spawn Shark
             }
 
         }
@@ -185,7 +189,7 @@ void processCells()
 
 void overwritePresentCells()
 {
-    //#pragma omp parallel for //schedule(dynamic,10)//num_threads(20) // //schedule(guided,10) //num_threads(4)
+#pragma omp parallel for //num_threads(threads)//schedule(dynamic,10)// // //schedule(guided,10) //num_threads(4)
     for (int x = 0; x < gridSizeX; x++)
     {
         for (int y = 0; y < gridSizeY; y++)
@@ -203,19 +207,16 @@ void update()
 
 void updateInfo()
 {
-    system("cls"); //Significantly hurt performance accidently leaving it on when not displaying cells
+    system("cls");
     displayCells();
     cellInfo();
-
     system("pause");
-    //Sleep(200);
 }
 
 
 
 int main()
 {
-    system("pause");
     //Initialisation
     startTime = clock();
     initialiseGrid();
@@ -230,12 +231,29 @@ int main()
     
     //Processing
     startTime = clock();
-    for (int i = 0; i < steps; i+=100) {
-        for(int i = 0; i < 100; i++)update();
+    
+    //1 step at a time
+    for (int i = 0; i < steps; i++) {
+        update();
         updateInfo();
     }
+
+    //Iterate 100 steps at a time
+    /*for (int i = 0; i < steps/100; i++) {
+        for(int i = 0; i < 100; i++)
+            update();
+        updateInfo();
+    }*/
+
+    //Run through all steps in one go
+    /*for (int i = 0; i < steps; i++) {
+        update();
+    }*/
+
+
     endTime = clock();
     processTime = (((float)endTime - (float)startTime) / 1000);
+    displayCells();
     std::cout << "Simulation process time: " << processTime << " (in s)" << std::endl;
     cellInfo();
 }
